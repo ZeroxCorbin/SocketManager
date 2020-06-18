@@ -97,7 +97,7 @@ namespace SocketManagerNS
         private object LockObject { get; set; } = new object();
 
         //Public
-        //public SocketManager() { }
+        public SocketManager() { }
         public SocketManager(string connectionString) => ConnectionString = connectionString;
 
         public SocketManager(string connectionString, ErrorEventHandler error = null, ConnectedEventHandler connectSate = null, DataReceivedEventHandler dataReceived = null, ListenStateEventHandler listenState = null, ListenClientConnectedEventHandler listenClientConnected = null)
@@ -110,7 +110,7 @@ namespace SocketManagerNS
             ListenState += listenState;
             ListenClientConnected += listenClientConnected;
         }
-        
+
         public bool Connect(bool withTimeout = true, int timeout = 3000)
         {
             ConnectTimeout = timeout;
@@ -150,37 +150,29 @@ namespace SocketManagerNS
         public bool Listen()
         {
             bool result = false;
-            if (IsConnected)
+            try
             {
-                try
-                {
-                    IPAddress localAddr = System.Net.IPAddress.Parse(IPAddress);
-                    Server = new TcpListener(localAddr, Port);
-                    Server.Start();
+                IPAddress localAddr = System.Net.IPAddress.Parse(IPAddress);
+                Server = new TcpListener(localAddr, Port);
+                Server.Start();
 
-                    IsListening = true;
-                    ThreadPool.QueueUserWorkItem(new WaitCallback(AsyncListenerThread_DoWork));
+                ThreadPool.QueueUserWorkItem(new WaitCallback(AsyncListenerThread_DoWork));
 
-                    result = true;
-                    return result;
-                }
-                catch (Exception ex)
-                {
-                    Error?.Invoke(this, ex);
-
-                    result = false;
-                    return result;
-                }
-                finally
-                {
-                    if (!result)
-                        Server = null;
-                    else
-                        ListenState?.Invoke(this, new SocketStateEventArgs(true));
-                }
+                result = true;
+                return result;
             }
-            else
-                return false;
+            catch (Exception ex)
+            {
+                Error?.Invoke(this, ex);
+
+                result = false;
+                return result;
+            }
+            finally
+            {
+                if (!result)
+                    Server = null;
+            }
         }
         public void StopListen()
         {
@@ -188,8 +180,6 @@ namespace SocketManagerNS
             {
                 IsListening = false;
                 Thread.Sleep(100);
-
-                ListenState?.Invoke(this, new SocketStateEventArgs(false));
             }
 
             try
@@ -208,54 +198,23 @@ namespace SocketManagerNS
         {
             if (ClientStream == null) return false;
 
-            IsAsyncReceiveRunning = true;
-
             ThreadPool.QueueUserWorkItem(new WaitCallback(AsyncReceiveThread_DoWork));
 
             return true;
         }
         public bool StartReceiveAsync(TcpClient client)
         {
-            if (ClientStream != null) return false;
+            Client = client;
+            if (ClientStream == null) return false;
 
-            bool result = false;
-            if (IsConnected)
-            {
-                try
-                {
-                    Client = client;
+            ThreadPool.QueueUserWorkItem(new WaitCallback(AsyncReceiveThread_DoWork));
 
-                    IsListening = true;
-                    ThreadPool.QueueUserWorkItem(new WaitCallback(AsyncListenerThread_DoWork));
-
-                    result = true;
-                    return result;
-                }
-                catch (Exception ex)
-                {
-                    Error?.Invoke(this, ex);
-
-                    result = false;
-                    return result;
-                }
-                finally
-                {
-                    if (!result)
-                        Server = null;
-                    else
-                    {
-                        IsAsyncReceiveRunning = true;
-
-                        ThreadPool.QueueUserWorkItem(new WaitCallback(AsyncReceiveThread_DoWork));
-                    }
-                }
-            }
-            else
-                return false;
+            return true;
         }
+
         public void StopReceiveAsync(bool force = false)
         {
-            if(!force) if (this.DataReceived != null) return;
+            if (!force) if (this.DataReceived != null) return;
 
             IsAsyncReceiveRunning = false;
             Thread.Sleep(100);
@@ -579,10 +538,11 @@ namespace SocketManagerNS
 
         private void AsyncReceiveThread_DoWork(object sender)
         {
+            IsAsyncReceiveRunning = true;
+            AsyncReceiveState?.Invoke(this, new SocketStateEventArgs(true));
+
             try
             {
-                AsyncReceiveState?.Invoke(this, new SocketStateEventArgs(true));
-
                 string msg;
                 while (IsAsyncReceiveRunning)
                 {
@@ -603,9 +563,15 @@ namespace SocketManagerNS
         }
         private void AsyncListenerThread_DoWork(object sender)
         {
+            IsListening = true;
+            ListenState?.Invoke(this, new SocketStateEventArgs(true));
+            
+
             while (IsListening)
                 if (Server.Pending())
                     ListenClientConnected?.BeginInvoke(Server, new ListenClientConnectedEventArgs(Server.AcceptTcpClient()), null, null);
+
+            ListenState?.Invoke(this, new SocketStateEventArgs(false));
         }
 
         private void CleanSock()
