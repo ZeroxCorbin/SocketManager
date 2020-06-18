@@ -32,6 +32,9 @@ namespace SocketManagerNS
         public delegate void ConnectedEventHandler(object sender, SocketStateEventArgs data);
         public event ConnectedEventHandler ConnectState;
 
+        public delegate void AsyncReceiveStateEventHandler(object sender, SocketStateEventArgs data);
+        public event AsyncReceiveStateEventHandler AsyncReceiveState;
+
         public delegate void ListenStateEventHandler(object sender, SocketStateEventArgs data);
         public event ListenStateEventHandler ListenState;
 
@@ -50,7 +53,6 @@ namespace SocketManagerNS
         {
             get
             {
-                if (ConnectionString.Count(c => c == ':') != 1) return string.Empty;
                 return ConnectionString.Split(':')[0];
             }
         }
@@ -58,27 +60,10 @@ namespace SocketManagerNS
         {
             get
             {
-                if (ConnectionString.Count(c => c == ':') != 1) return 0;
+                if (ConnectionString.Count(c => c == ':') < 1) return 0;
                 return int.Parse(ConnectionString.Split(':')[1]);
             }
         }
-
-        //Public Read-only
-        public int BufferSize { get; private set; } = 1024;
-        public int ConnectTimeout { get; private set; } = 3000;
-        public int SendTimeout { get; private set; } = 500;
-        public int RecieveTimeout { get; private set; } = 500;
-        public bool IsConnected { get { if (Client != null) return Client.Connected; else return false; } }
-        public bool IsListening { get; private set; }
-        public bool IsAsyncReceiveRunning { get; private set; } = true;
-        public bool IsError { get; private set; } = false;
-        public Exception ErrorException { get; private set; }
-
-        //Private
-        private TcpClient Client { get; set; }
-        private NetworkStream ClientStream { get; set; }
-        private TcpListener Server { get; set; }
-        private object LockObject { get; set; } = new object();
 
         //Public Static
         public static string GenerateConnectionString(string ip, int port) => ip + ":" + port.ToString();
@@ -94,9 +79,27 @@ namespace SocketManagerNS
             return true;
         }
 
+        //Public Read-only
+        public int BufferSize { get; private set; } = 1024;
+        public int ConnectTimeout { get; private set; } = 3000;
+        public int SendTimeout { get; private set; } = 500;
+        public int ReceiveTimeout { get; private set; } = 500;
+        public bool IsConnected { get { if (Client != null) return Client.Connected; else return false; } }
+        public bool IsListening { get; private set; }
+        public bool IsAsyncReceiveRunning { get; private set; } = false;
+        public bool IsError { get; private set; } = false;
+        public Exception ErrorException { get; private set; }
+
+        //Private
+        private TcpClient Client { get; set; }
+        private NetworkStream ClientStream => Client.GetStream();
+        private TcpListener Server { get; set; }
+        private object LockObject { get; set; } = new object();
+
         //Public
-        public SocketManager() { }
+        //public SocketManager() { }
         public SocketManager(string connectionString) => ConnectionString = connectionString;
+
         public SocketManager(string connectionString, ErrorEventHandler error = null, ConnectedEventHandler connectSate = null, DataReceivedEventHandler dataReceived = null, ListenStateEventHandler listenState = null, ListenClientConnectedEventHandler listenClientConnected = null)
         {
             ConnectionString = connectionString;
@@ -123,7 +126,6 @@ namespace SocketManagerNS
 
                 Client = new TcpClient();
                 Client.Connect(IPAddress, Port);
-                ClientStream = Client.GetStream();
 
                 result = true;
                 return result;
@@ -144,7 +146,6 @@ namespace SocketManagerNS
         public void Disconnect()
         {
             CleanSock();
-            ConnectState?.Invoke(this, new SocketStateEventArgs(true));
         }
         public bool Listen()
         {
@@ -187,6 +188,7 @@ namespace SocketManagerNS
             {
                 IsListening = false;
                 Thread.Sleep(100);
+
                 ListenState?.Invoke(this, new SocketStateEventArgs(false));
             }
 
@@ -202,7 +204,7 @@ namespace SocketManagerNS
             Server = null;
         }
 
-        public bool StartRecieveAsync()
+        public bool StartReceiveAsync()
         {
             if (ClientStream == null) return false;
 
@@ -212,7 +214,7 @@ namespace SocketManagerNS
 
             return true;
         }
-        public bool StartRecieveAsync(TcpClient client)
+        public bool StartReceiveAsync(TcpClient client)
         {
             if (ClientStream != null) return false;
 
@@ -222,7 +224,6 @@ namespace SocketManagerNS
                 try
                 {
                     Client = client;
-                    ClientStream = Client.GetStream();
 
                     IsListening = true;
                     ThreadPool.QueueUserWorkItem(new WaitCallback(AsyncListenerThread_DoWork));
@@ -252,8 +253,10 @@ namespace SocketManagerNS
             else
                 return false;
         }
-        public void StopRecieveAsync()
+        public void StopReceiveAsync(bool force = false)
         {
+            if(!force) if (this.DataReceived != null) return;
+
             IsAsyncReceiveRunning = false;
             Thread.Sleep(100);
         }
@@ -374,8 +377,7 @@ namespace SocketManagerNS
                 completeMessage.AppendFormat("{0}", Read());
                 Thread.Sleep(5);
             }
-            while (ClientStream.DataAvailable &&
-                   sw.ElapsedMilliseconds < timeout);
+            while (ClientStream.DataAvailable && sw.ElapsedMilliseconds < timeout);
             sw.Stop();
 
             if (sw.ElapsedMilliseconds >= timeout)
@@ -444,13 +446,13 @@ namespace SocketManagerNS
         public bool Write(string msg)
         {
             byte[] buffer_ot = new byte[BufferSize];
+            Bzero(buffer_ot);
             try
             {
                 lock (LockObject)
                 {
                     StringToBytes(msg, ref buffer_ot);
                     ClientStream.Write(buffer_ot, 0, buffer_ot.Length);
-                    Bzero(buffer_ot);
                 }
             }
             catch (Exception ex)
@@ -541,10 +543,7 @@ namespace SocketManagerNS
             try
             {
                 if (!ar.AsyncWaitHandle.WaitOne(TimeSpan.FromMilliseconds(ConnectTimeout), false))
-                {
-                    Client.Close();
                     connected = false;
-                }
                 else
                     connected = true;
             }
@@ -553,7 +552,7 @@ namespace SocketManagerNS
                 if (!connected)
                     CleanSock();
                 else
-                    ClientStream = Client.GetStream();
+                    Client.EndConnect(ar);
 
                 wh.Close();
             }
@@ -582,6 +581,8 @@ namespace SocketManagerNS
         {
             try
             {
+                AsyncReceiveState?.Invoke(this, new SocketStateEventArgs(true));
+
                 string msg;
                 while (IsAsyncReceiveRunning)
                 {
@@ -595,37 +596,45 @@ namespace SocketManagerNS
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex.Message);
+                Error?.Invoke(this, ex);
             }
+
+            AsyncReceiveState?.Invoke(this, new SocketStateEventArgs(false));
         }
         private void AsyncListenerThread_DoWork(object sender)
         {
             while (IsListening)
                 if (Server.Pending())
-                    ListenClientConnected?.Invoke(Server, new ListenClientConnectedEventArgs(Server.AcceptTcpClient()));
+                    ListenClientConnected?.BeginInvoke(Server, new ListenClientConnectedEventArgs(Server.AcceptTcpClient()), null, null);
         }
 
         private void CleanSock()
         {
-            StopRecieveAsync();
+            StopReceiveAsync();
+
+            lock (LockObject) { }
 
             try
             {
                 StopListen();
+                DataReceived = null;
+                ListenState = null;
+                ListenClientConnected = null;
 
-                ClientStream?.Close();
                 Client?.Close();
 
-                ClientStream?.Dispose();
+                ConnectState?.BeginInvoke(this, new SocketStateEventArgs(false), null, null);
+                ConnectState = null;
+
                 Client?.Dispose();
             }
             catch (Exception ex)
             {
-                Error?.Invoke(this, ex);
+                Error?.BeginInvoke(this, ex, null, null);
             }
             finally
             {
-                ClientStream = null;
+                Error = null;
                 Client = null;
             }
         }
@@ -661,7 +670,6 @@ namespace SocketManagerNS
                 {
                     // TODO: dispose managed state (managed objects).
                     Client?.Dispose();
-                    ClientStream?.Dispose();
                 }
 
                 // TODO: free unmanaged resources (unmanaged objects) and override a finalizer below.
