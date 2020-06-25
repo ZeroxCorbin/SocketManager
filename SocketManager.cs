@@ -173,15 +173,18 @@ namespace SocketManagerNS
                         Client.Close();
                         connected = false;
                     }
-                        
                     else
                         connected = true;
                     if (Client.Client != null)
                         Client.EndConnect(ar);
                 }
+                catch(SocketException)
+                {
+                    connected = false;
+                }
                 catch (Exception ex)
                 {
-                    //InternalError(Client, ex);
+                    InternalError(Client, ex);
                     connected = false;
                 }
                 finally
