@@ -13,29 +13,29 @@ namespace SocketManagerNS
     public class SocketManager : IDisposable
     {
         //Public
-        public class SocketStateEventArgs : EventArgs
-        {
-            public bool State { get; }
-            public SocketStateEventArgs(bool state) => State = state;
-        }
-        public class SocketMessageEventArgs : EventArgs
-        {
-            public string Message { get; }
-            public SocketMessageEventArgs(string message) => Message = message;
-        }
+        //public class SocketStateEventArgs : EventArgs
+        //{
+        //    public bool State { get; }
+        //    public SocketStateEventArgs(bool state) => State = state;
+        //}
+        //public class SocketMessageEventArgs : EventArgs
+        //{
+        //    public string Message { get; }
+        //    public SocketMessageEventArgs(string message) => Message = message;
+        //}
         public class ListenClientConnectedEventArgs : EventArgs
         {
             public TcpClient Client { get; }
             public ListenClientConnectedEventArgs(TcpClient client) => Client = client;
         }
 
-        public delegate void ConnectedEventHandler(object sender, SocketStateEventArgs data);
+        public delegate void ConnectedEventHandler(object sender, bool state);
         public event ConnectedEventHandler ConnectState;
 
-        public delegate void AsyncReceiveStateEventHandler(object sender, SocketStateEventArgs data);
+        public delegate void AsyncReceiveStateEventHandler(object sender, bool state);
         public event AsyncReceiveStateEventHandler ReceiveAsyncState;
 
-        public delegate void ListenStateEventHandler(object sender, SocketStateEventArgs data);
+        public delegate void ListenStateEventHandler(object sender, bool state);
         public event ListenStateEventHandler ListenState;
 
         public delegate void ListenClientConnectedEventHandler(object sender, ListenClientConnectedEventArgs data);
@@ -44,7 +44,7 @@ namespace SocketManagerNS
         public delegate void ErrorEventHandler(object sender, Exception data);
         public event ErrorEventHandler Error;
 
-        public delegate void DataReceivedEventHandler(object sender, SocketMessageEventArgs data);
+        public delegate void DataReceivedEventHandler(object sender, string data);
         public event DataReceivedEventHandler DataReceived;
 
         //Public
@@ -194,9 +194,9 @@ namespace SocketManagerNS
                 }
 
                 if (connected)
-                    ConnectState?.BeginInvoke(this, new SocketStateEventArgs(true), null, null);
+                    ConnectState?.BeginInvoke(this, true, null, null);
                 else
-                    ConnectState?.BeginInvoke(this, new SocketStateEventArgs(false), null, null);
+                    ConnectState?.BeginInvoke(this,false, null, null);
 
                 return connected;
             }
@@ -211,7 +211,7 @@ namespace SocketManagerNS
                 Client?.Close();
             }
 
-            ConnectState?.BeginInvoke(this, new SocketStateEventArgs(false), null, null);
+            ConnectState?.BeginInvoke(this, false, null, null);
         }
 
         public bool Listen()
@@ -295,6 +295,9 @@ namespace SocketManagerNS
         }
         public string Read(string untilString, uint timeout = 1000)
         {
+            if (string.IsNullOrEmpty(untilString))
+                return string.Empty;
+
             lock (ClientStreamReadLockObject)
             {
                 Stopwatch sw = new Stopwatch();
@@ -316,9 +319,8 @@ namespace SocketManagerNS
 
                         sb.AppendFormat("{0}", Encoding.ASCII.GetString(buffer, 0, readBytes));
 
-                        if (string.IsNullOrEmpty(untilString))
-                            break;
-                        if (sb.ToString().Contains(untilString))
+
+                        if (sb.ToString().EndsWith(untilString))
                             break;
 
                         if (readBytes > 0) sw.Restart();
@@ -532,7 +534,7 @@ namespace SocketManagerNS
             lock (ReceiveAsyncLockObject)
             {
                 IsReceivingAsync = true;
-                ReceiveAsyncState?.BeginInvoke(this, new SocketStateEventArgs(true), null, null);
+                ReceiveAsyncState?.BeginInvoke(this, true, null, null);
 
                 try
                 {
@@ -541,7 +543,7 @@ namespace SocketManagerNS
                     {
                         msg = Read((string)sender);
                         if (msg.Length > 0)
-                            DataReceived?.BeginInvoke(this, new SocketMessageEventArgs(msg), null, null);
+                            DataReceived?.BeginInvoke(this, msg, null, null);
 
                         if (!DetectConnection())
                             throw new Exception("Client disconnect detected internally.");
@@ -553,7 +555,7 @@ namespace SocketManagerNS
                     IsReceivingAsync = false;
                 }
 
-                ReceiveAsyncState?.BeginInvoke(this, new SocketStateEventArgs(false), null, null);
+                ReceiveAsyncState?.BeginInvoke(this, false, null, null);
             }
         }
         private void ListenThread_DoWork(object sender)
@@ -563,7 +565,7 @@ namespace SocketManagerNS
                 try
                 {
                     IsListening = true;
-                    ListenState?.BeginInvoke(this, new SocketStateEventArgs(true), null, null);
+                    ListenState?.BeginInvoke(this, true, null, null);
 
                     while (IsListening)
                     {
@@ -574,13 +576,13 @@ namespace SocketManagerNS
                     Server.Stop();
                     Server = null;
 
-                    ListenState?.BeginInvoke(this, new SocketStateEventArgs(false), null, null);
+                    ListenState?.BeginInvoke(this, false, null, null);
                 }
                 catch (Exception ex)
                 {
                     InternalError(Server, ex);
                     IsListening = false;
-                    ListenState?.BeginInvoke(this, new SocketStateEventArgs(false), null, null);
+                    ListenState?.BeginInvoke(this, false, null, null);
                 }
             }
         }
