@@ -4,4 +4,11 @@
     <TargetFrameworks>netstandard2.1;net472</TargetFrameworks>
   </PropertyGroup>
 
+  <ItemGroup>
+    <None Remove=".gitattributes" />
+    <None Remove=".gitignore" />
+    <None Remove="LICENSE" />
+    <None Remove="README.md" />
+  </ItemGroup>
+
 </Project>
