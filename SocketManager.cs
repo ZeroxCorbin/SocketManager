@@ -12,7 +12,7 @@ using System.Threading.Tasks;
 
 namespace SocketManagerNS
 {
-    public class SocketManager : IDisposable
+    public class SocketManager : GroupedTaskQueue, IDisposable
     {
         //Public
         //public class SocketStateEventArgs : EventArgs
@@ -115,7 +115,7 @@ namespace SocketManagerNS
         {
             if (!ValidateConnectionString(connectionString))
             {
-                Task.Run(() => Error?.Invoke(this, new Exception($"Invalid Connection String: {connectionString}")));
+                this.Queue(false, new Action(() => Error?.Invoke(this, new Exception($"Invalid Connection String: {connectionString}"))));
                 return;
             }
 
@@ -126,7 +126,7 @@ namespace SocketManagerNS
             if (!ValidateConnectionString(connectionString))
             {
                 Error += error;
-                Task.Run(() => Error?.Invoke(this, new Exception($"Invalid Connection String: {connectionString}")));
+                this.Queue(false, new Action(() => Error?.Invoke(this, new Exception($"Invalid Connection String: {connectionString}"))));
                 return;
             }
 
@@ -141,8 +141,8 @@ namespace SocketManagerNS
         private void InternalError(object sender, Exception data)
         {
             IsError = true;
-            Task.Run(() => Error?.Invoke(this, data));
-            Task.Run(() => ConnectState?.Invoke(this, false));
+            this.Queue(false, new Action(() => Error?.Invoke(this, data)));
+            this.Queue(false, new Action(() => ConnectState?.Invoke(this, false)));
         }
 
         public bool Connect(int timeout = 3000)
@@ -193,9 +193,9 @@ namespace SocketManagerNS
                 }
 
                 if (connected)
-                    Task.Run(() => ConnectState?.Invoke(this, true));
+                    this.Queue(false, new Action(() => ConnectState?.Invoke(this, true)));
                 else
-                    Task.Run(() => ConnectState?.Invoke(this,false));
+                    this.Queue(false, new Action(() => ConnectState?.Invoke(this,false)));
 
                 return connected;
             }
@@ -210,7 +210,7 @@ namespace SocketManagerNS
                 Client?.Close();
             }
 
-            Task.Run(() => ConnectState?.Invoke(this, false));
+            this.Queue(false, new Action(() => ConnectState?.Invoke(this, false)));
         }
 
         public bool Listen()
@@ -259,7 +259,7 @@ namespace SocketManagerNS
 
         //Read Strings
         public string Read(char untilChar, uint timeout = 1000) => Read(untilChar.ToString(), timeout);
-        public string Read(string untilString = "\r\n", uint timeout = 1000)
+        public string Read(string untilString = "\r\n", uint timeout = 2000)
         {
             if (string.IsNullOrEmpty(untilString))
                 untilString = string.Empty;
@@ -499,7 +499,7 @@ namespace SocketManagerNS
             lock (ReceiveAsyncLockObject)
             {
                 IsReceivingAsync = true;
-                Task.Run(() => ReceiveAsyncState?.Invoke(this, true));
+                this.Queue(false, new Action(() => ReceiveAsyncState?.Invoke(this, true)));
 
                 try
                 {
@@ -520,7 +520,7 @@ namespace SocketManagerNS
                 }
 
                 IsReceivingAsync = false;
-                Task.Run(() => ReceiveAsyncState?.Invoke(this, false));
+                this.Queue(false, new Action(() => ReceiveAsyncState?.Invoke(this, false)));
             }
         }
         private void ListenThread_DoWork(object sender)
@@ -530,29 +530,32 @@ namespace SocketManagerNS
                 try
                 {
                     IsListening = true;
-
-                    Task.Run(() => ListenState?.Invoke(this, true));
+                    this.Queue(false, new Action(() => ListenState?.Invoke(this, true)));
 
                     while (IsListening)
                     {
                         if (Server.Pending())
                         {
                             TcpClient cl = Server.AcceptTcpClient();
-                            Task.Run(() => ListenClientConnected?.Invoke(Server, new ListenClientConnectedEventArgs(cl)));
+                            this.Queue(false, new Action(() => ListenClientConnected?.Invoke(Server, new ListenClientConnectedEventArgs(cl))));
                         }
-                            
                     }
 
                     Server.Stop();
                     Server = null;
 
-                    Task.Run(() => ListenState?.Invoke(this, false));
+                    this.Queue(false, new Action(() => ListenState?.Invoke(this, false)));
                 }
                 catch (Exception ex)
                 {
-                    InternalError(Server, ex);
                     IsListening = false;
-                    Task.Run(() => ListenState?.Invoke(this, false));
+
+                    Server?.Stop();
+                    Server = null;
+
+                    InternalError(Server, ex);
+                    
+                    this.Queue(false, new Action(() => ListenState?.Invoke(this, false)));
                 }
             }
         }
