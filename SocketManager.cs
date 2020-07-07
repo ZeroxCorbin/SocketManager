@@ -301,9 +301,9 @@ namespace SocketManagerNS
                     InternalError(ClientStream, ex);
                     return string.Empty;
                 }
-
+#if DEBUG
                 Console.Write(sb.ToString());
-
+#endif
                 return sb.ToString();
             }
         }
@@ -512,8 +512,6 @@ namespace SocketManagerNS
                             
                         if (!DetectConnection())
                             throw new Exception("Client disconnect detected internally.");
-
-                        Thread.Sleep(1);
                     }
                 }
                 catch (Exception ex)
@@ -541,6 +539,7 @@ namespace SocketManagerNS
                             TcpClient cl = Server.AcceptTcpClient();
                             this.Queue(false, new Action(() => ListenClientConnected?.Invoke(Server, new ListenClientConnectedEventArgs(cl))));
                         }
+                        Thread.Sleep(10);
                     }
 
                     Server.Stop();
