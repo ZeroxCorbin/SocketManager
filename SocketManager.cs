@@ -512,6 +512,8 @@ namespace SocketManagerNS
                             
                         if (!DetectConnection())
                             throw new Exception("Client disconnect detected internally.");
+
+                        Thread.Sleep(1);
                     }
                 }
                 catch (Exception ex)
