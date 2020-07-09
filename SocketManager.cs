@@ -314,118 +314,14 @@ namespace SocketManagerNS
             }
         }
 
-        //Read Bytes
-        //public byte[] ReadBytes()
-        //{
-        //    lock (ClientStreamReadLockObject)
-        //    {
-        //        List<byte> ret = new List<byte>();
-
-        //        try
-        //        {
-        //            if (ClientStream == null) return new byte[0];
-
-        //            while (ClientStream.CanRead && ClientStream.DataAvailable)
-        //            {
-        //                byte[] buffer = new byte[BufferSize];
-
-        //                int readBytes = ClientStream.Read(buffer, 0, buffer.Length);
-
-        //                for (int i = 0; i < readBytes; i++)
-        //                    ret.Add(buffer[i]);
-        //            }
-        //        }
-        //        catch (Exception ex)
-        //        {
-        //            InternalError(ClientStream, ex);
-        //            return new byte[0];
-        //        }
-
-        //        return ret.ToArray();
-        //    }
-        //}
-        //public byte[] ReadBytes(int untilTimeout)
-        //{
-        //    lock (ClientStreamReadLockObject)
-        //    {
-        //        Stopwatch sw = new Stopwatch();
-        //        List<byte> ret = new List<byte>();
-
-        //        try
-        //        {
-        //            if (ClientStream == null) return new byte[0];
-
-        //            sw.Start();
-        //            while (ClientStream.CanRead)
-        //            {
-        //                byte[] buffer = new byte[BufferSize];
-
-        //                int readBytes = ClientStream.Read(buffer, 0, buffer.Length);
-
-        //                for (int i = 0; i < readBytes; i++)
-        //                    ret.Add(buffer[i]);
-
-        //                if (readBytes > 0) sw.Restart();
-        //                if (sw.ElapsedMilliseconds >= untilTimeout)
-        //                    break;
-        //            }
-        //            sw.Stop();
-        //        }
-        //        catch (Exception ex)
-        //        {
-        //            InternalError(ClientStream, ex);
-        //            return new byte[0];
-        //        }
-
-        //        return ret.ToArray();
-        //    }
-        //}
-        //public byte[] ReadBytes(char untilChar = '\n', uint timeout = 1000)
-        //{
-        //    lock (ClientStreamReadLockObject)
-        //    {
-        //        Stopwatch sw = new Stopwatch();
-        //        List<byte> ret = new List<byte>();
-
-        //        try
-        //        {
-        //            if (ClientStream == null) return new byte[0];
-
-        //            sw.Start();
-        //            while (ClientStream.CanRead)
-        //            {
-        //                byte[] buffer = new byte[BufferSize];
-
-        //                int readBytes = ClientStream.Read(buffer, 0, buffer.Length);
-
-        //                for (int i = 0; i < readBytes; i++)
-        //                {
-        //                    ret.Add(buffer[i]);
-        //                    if (buffer[i] == untilChar)
-        //                        return ret.ToArray();
-        //                }
-
-        //                if (readBytes > 0) sw.Restart();
-        //                if (sw.ElapsedMilliseconds >= timeout)
-        //                    break;
-        //            }
-        //            sw.Stop();
-        //        }
-        //        catch (Exception ex)
-        //        {
-        //            InternalError(ClientStream, ex);
-        //            return new byte[0];
-        //        }
-
-        //        return ret.ToArray();
-        //    }
-        //}
-
         //Write
         public bool Write(string msg)
         {
             lock (ClientStreamWriteLockObject)
             {
+#if DEBUG
+                Console.Write(msg);
+#endif
                 try
                 {
                     if (ClientStream == null) return false;
