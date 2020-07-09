@@ -239,7 +239,7 @@ namespace SocketManagerNS
             lock (ListenLockObject) { }
         }
 
-        public bool ReceiveAsync(string messageTerminator = "\r\n")
+        public bool ReceiveAsync(string messageTerminator = "\n")
         {
             if (IsReceivingAsync) return true;
 
@@ -259,7 +259,7 @@ namespace SocketManagerNS
 
         //Read Strings
         public string Read(char untilChar, uint timeout = 1000) => Read(untilChar.ToString(), timeout);
-        public string Read(string untilString = "\r\n", uint timeout = 2000)
+        public string Read(string untilString = "\n", uint timeout = 2000)
         {
             if (string.IsNullOrEmpty(untilString))
                 untilString = string.Empty;
@@ -276,20 +276,26 @@ namespace SocketManagerNS
                     sw.Start();
                     while (ClientStream.CanRead)
                     {
-                        if (ClientStream.DataAvailable)
+                        while (ClientStream.DataAvailable)
                         {
                             int b = ClientStream.ReadByte();
 
-                            if(b > -1)
+                            if (b > -1)
                             {
                                 sb.Append((char)b);
                                 sw.Restart();
                             }
+                            else
+                                break;
                         }
 
-                        if(!string.IsNullOrEmpty(untilString))
+                        if (!string.IsNullOrEmpty(untilString))
+                        {
                             if (sb.ToString().EndsWith(untilString))
                                 break;
+                        }
+                        else if (!ClientStream.DataAvailable)
+                            break;
 
                         if (sw.ElapsedMilliseconds >= timeout)
                             break;
