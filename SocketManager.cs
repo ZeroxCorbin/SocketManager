@@ -304,7 +304,7 @@ namespace SocketManagerNS
                     return string.Empty;
                 }
 #if TRACE
-                Console.Write($"r: {sb}");
+                Console.WriteLine($"r: {sb.ToString().Trim('\r','\n')}");
 #endif
                 return sb.ToString();
             }
@@ -316,7 +316,7 @@ namespace SocketManagerNS
             lock (ClientStreamWriteLockObject)
             {
 #if TRACE
-                Console.Write($"w: {msg}");
+                Console.WriteLine($"w: {msg.Trim('\r', '\n')}");
 #endif
                 try
                 {
