@@ -304,7 +304,8 @@ namespace SocketManagerNS
                     return string.Empty;
                 }
 #if TRACE
-                Console.WriteLine($"r: {sb.ToString().Trim('\r','\n')}");
+                if(sb.Length > 0)
+                    Console.WriteLine($"r: {sb.ToString().Trim('\r','\n')}");
 #endif
                 return sb.ToString();
             }
