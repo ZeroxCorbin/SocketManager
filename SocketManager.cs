@@ -1,14 +1,10 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace SocketManagerNS
 {
@@ -87,7 +83,7 @@ namespace SocketManagerNS
         {
             get
             {
-                if(TheClientStream == null)
+                if (TheClientStream == null)
                 {
                     if (Client != null)
                     {
@@ -195,7 +191,7 @@ namespace SocketManagerNS
                 if (connected)
                     this.Queue(false, new Action(() => ConnectState?.Invoke(this, true)));
                 else
-                    this.Queue(false, new Action(() => ConnectState?.Invoke(this,false)));
+                    this.Queue(false, new Action(() => ConnectState?.Invoke(this, false)));
 
                 return connected;
             }
@@ -307,8 +303,8 @@ namespace SocketManagerNS
                     InternalError(ClientStream, ex);
                     return string.Empty;
                 }
-#if DEBUG
-                Console.Write(sb.ToString());
+#if TRACE
+                Console.Write($"r: {sb}");
 #endif
                 return sb.ToString();
             }
@@ -319,8 +315,8 @@ namespace SocketManagerNS
         {
             lock (ClientStreamWriteLockObject)
             {
-#if DEBUG
-                Console.Write(msg);
+#if TRACE
+                Console.Write($"w: {msg}");
 #endif
                 try
                 {
@@ -362,20 +358,6 @@ namespace SocketManagerNS
             }
         }
 
-        //Utility
-        //public string[] MessageSplit(string message)
-        //{
-        //    List<string> messages = new List<string>();
-        //    foreach (string item in message.Split('\n', '\r'))
-        //        if (!String.IsNullOrEmpty(item))
-        //            messages.Add(item);
-
-        //    if (messages.Count() > 0)
-        //        return messages.ToArray();
-        //    else
-        //        return new string[] { message.Trim('\n', '\r') };
-        //}
-
         //Private
         private bool DetectConnection()
         {
@@ -411,7 +393,7 @@ namespace SocketManagerNS
                         msg = Read((string)sender);
                         if (msg.Length > 0)
                             DataReceived?.Invoke(this, msg);
-                            
+
                         if (!DetectConnection())
                             throw new Exception("Client disconnect detected internally.");
                     }
@@ -457,29 +439,11 @@ namespace SocketManagerNS
                     Server = null;
 
                     InternalError(Server, ex);
-                    
+
                     this.Queue(false, new Action(() => ListenState?.Invoke(this, false)));
                 }
             }
         }
-
-        //private byte[] GetBuffer(int size)
-        //{
-        //    byte[] ret = new byte[size];
-
-        //    for (int i = 0; i < ret.Length; i++)
-        //        ret[i] = 0;
-
-        //    return ret;
-        //}
-        //public byte[] StringToBytes(string msg) => System.Text.ASCIIEncoding.ASCII.GetBytes(msg);
-
-        //private string BytesToString(byte[] buffer)
-        //{
-        //    string msg = System.Text.ASCIIEncoding.ASCII.GetString(buffer, 0, buffer.Length);
-        //    return msg;
-        //}
-
 
         #region IDisposable Support
         private bool disposedValue = false; // To detect redundant calls
@@ -489,7 +453,7 @@ namespace SocketManagerNS
             if (!disposedValue)
             {
                 if (disposing)
-                { 
+                {
                     ConnectState = null;
                     DataReceived = null;
                     ReceiveAsyncState = null;
