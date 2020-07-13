@@ -46,7 +46,7 @@ namespace SocketManagerNS
         public event DataReceivedEventHandler DataReceived;
 
         //Public
-        public string ConnectionString { get; private set; }
+        public string ConnectionString { get; set; }
         public string IPAddressString => ConnectionString.Split(':')[0];
         public string PortString => ConnectionString.Split(':')[1];
 
@@ -111,7 +111,7 @@ namespace SocketManagerNS
         {
             if (!ValidateConnectionString(connectionString))
             {
-                this.Queue(false, new Action(() => Error?.Invoke(this, new Exception($"Invalid Connection String: {connectionString}"))));
+                this.QueueTask(false, new Action(() => Error?.Invoke(this, new Exception($"Invalid Connection String: {connectionString}"))));
                 return;
             }
 
@@ -122,7 +122,7 @@ namespace SocketManagerNS
             if (!ValidateConnectionString(connectionString))
             {
                 Error += error;
-                this.Queue(false, new Action(() => Error?.Invoke(this, new Exception($"Invalid Connection String: {connectionString}"))));
+                this.QueueTask(false, new Action(() => Error?.Invoke(this, new Exception($"Invalid Connection String: {connectionString}"))));
                 return;
             }
 
@@ -137,8 +137,8 @@ namespace SocketManagerNS
         private void InternalError(object sender, Exception data)
         {
             IsError = true;
-            this.Queue(false, new Action(() => Error?.Invoke(this, data)));
-            this.Queue(false, new Action(() => ConnectState?.Invoke(this, false)));
+            this.QueueTask(false, new Action(() => Error?.Invoke(this, data)));
+            this.QueueTask(false, new Action(() => ConnectState?.Invoke(this, false)));
         }
 
         public bool Connect(int timeout = 3000)
@@ -189,9 +189,9 @@ namespace SocketManagerNS
                 }
 
                 if (connected)
-                    this.Queue(false, new Action(() => ConnectState?.Invoke(this, true)));
+                    this.QueueTask(false, new Action(() => ConnectState?.Invoke(this, true)));
                 else
-                    this.Queue(false, new Action(() => ConnectState?.Invoke(this, false)));
+                    this.QueueTask(false, new Action(() => ConnectState?.Invoke(this, false)));
 
                 return connected;
             }
@@ -206,7 +206,7 @@ namespace SocketManagerNS
                 Client?.Close();
             }
 
-            this.Queue(false, new Action(() => ConnectState?.Invoke(this, false)));
+            this.QueueTask(false, new Action(() => ConnectState?.Invoke(this, false)));
         }
 
         public bool Listen()
@@ -384,7 +384,7 @@ namespace SocketManagerNS
             lock (ReceiveAsyncLockObject)
             {
                 IsReceivingAsync = true;
-                this.Queue(false, new Action(() => ReceiveAsyncState?.Invoke(this, true)));
+                this.QueueTask(false, new Action(() => ReceiveAsyncState?.Invoke(this, true)));
 
                 try
                 {
@@ -405,7 +405,7 @@ namespace SocketManagerNS
                 }
 
                 IsReceivingAsync = false;
-                this.Queue(false, new Action(() => ReceiveAsyncState?.Invoke(this, false)));
+                this.QueueTask(false, new Action(() => ReceiveAsyncState?.Invoke(this, false)));
             }
         }
         private void ListenThread_DoWork(object sender)
@@ -415,14 +415,14 @@ namespace SocketManagerNS
                 try
                 {
                     IsListening = true;
-                    this.Queue(false, new Action(() => ListenState?.Invoke(this, true)));
+                    this.QueueTask(false, new Action(() => ListenState?.Invoke(this, true)));
 
                     while (IsListening)
                     {
                         if (Server.Pending())
                         {
                             TcpClient cl = Server.AcceptTcpClient();
-                            this.Queue(false, new Action(() => ListenClientConnected?.Invoke(Server, new ListenClientConnectedEventArgs(cl))));
+                            this.QueueTask(false, new Action(() => ListenClientConnected?.Invoke(Server, new ListenClientConnectedEventArgs(cl))));
                         }
                         Thread.Sleep(10);
                     }
@@ -430,7 +430,7 @@ namespace SocketManagerNS
                     Server.Stop();
                     Server = null;
 
-                    this.Queue(false, new Action(() => ListenState?.Invoke(this, false)));
+                    this.QueueTask(false, new Action(() => ListenState?.Invoke(this, false)));
                 }
                 catch (Exception ex)
                 {
@@ -441,7 +441,7 @@ namespace SocketManagerNS
 
                     InternalError(Server, ex);
 
-                    this.Queue(false, new Action(() => ListenState?.Invoke(this, false)));
+                    this.QueueTask(false, new Action(() => ListenState?.Invoke(this, false)));
                 }
             }
         }
@@ -482,6 +482,7 @@ namespace SocketManagerNS
         // This code added to correctly implement the disposable pattern.
         public void Dispose()
         {
+            Close();
             // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
             Dispose(true);
             // TODO: uncomment the following line if the finalizer is overridden above.

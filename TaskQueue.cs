@@ -11,7 +11,7 @@ namespace SocketManagerNS
         private readonly Queue<QTask> _tasks = new Queue<QTask>();
         private int _runningTaskCount;
 
-        public void Queue(bool isParallel, Action task)
+        public void QueueTask(bool isParallel, Action task)
         {
             lock (_syncObj)
             {
@@ -21,7 +21,7 @@ namespace SocketManagerNS
             ProcessTaskQueue();
         }
 
-        public int Count
+        public int TaskCount
         {
             get { lock (_syncObj) { return _tasks.Count; } }
         }
@@ -86,12 +86,12 @@ namespace SocketManagerNS
         private readonly Dictionary<string, TaskQueue> _queues = new Dictionary<string, TaskQueue>();
         private readonly string _defaultGroup = Guid.NewGuid().ToString();
 
-        public void Queue(bool isParallel, Action task)
+        public void QueueTask(bool isParallel, Action task)
         {
-            Queue(_defaultGroup, isParallel, task);
+            QueueTask(_defaultGroup, isParallel, task);
         }
 
-        public void Queue(string group, bool isParallel, Action task)
+        public void QueueTask(string group, bool isParallel, Action task)
         {
             TaskQueue queue;
 
@@ -112,14 +112,14 @@ namespace SocketManagerNS
                 OnTaskCompleted(group, queue);
             };
 
-            queue.Queue(isParallel, completionTask);
+            queue.QueueTask(isParallel, completionTask);
         }
 
         private void OnTaskCompleted(string group, TaskQueue queue)
         {
             lock (_syncObj)
             {
-                if (queue.Count == 0)
+                if (queue.TaskCount == 0)
                 {
                     _queues.Remove(group);
                 }
