@@ -69,7 +69,16 @@ namespace SocketManagerNS
         }
 
         //Public Read-only
-        public bool IsConnected { get { if (Client != null) return Client.Connected; else return false; } }
+        public bool IsConnected 
+        {
+            get
+            { 
+                if (Client != null)
+                    return Client.Connected; 
+                else 
+                    return false;
+            } 
+        }
         public bool IsListening { get; private set; }
         public bool IsReceivingAsync { get; private set; } = false;
         public bool IsError { get; private set; } = false;
@@ -145,42 +154,22 @@ namespace SocketManagerNS
         {
             lock (ClientLockObject)
             {
-                if (Client != null)
-                {
-                    if (Client.Connected)
-                        return true;
-
-                    ClientStream?.Close();
-                    Client?.Close();
-                    Client?.Dispose();
-
-                    Client = null;
-                }
-
                 Client = new TcpClient()
                 {
                     ReceiveTimeout = timeout + 1,
                     SendTimeout = timeout + 1,
                 };
 
-                bool connected = false;
-
                 IAsyncResult ar = Client.BeginConnect(IPAddress, Port, null, null);
                 WaitHandle wh = ar.AsyncWaitHandle;
                 try
                 {
-                    if (!ar.AsyncWaitHandle.WaitOne(TimeSpan.FromMilliseconds(timeout), true))
-                        connected = false;
-                    else
-                    {
+                    if (ar.AsyncWaitHandle.WaitOne(TimeSpan.FromMilliseconds(timeout), true))
                         Client.EndConnect(ar);
-                        connected = true;
-                    }
                 }
                 catch (Exception ex)
                 {
                     InternalError(Client, ex);
-                    connected = false;
                 }
                 finally
                 {
@@ -188,12 +177,12 @@ namespace SocketManagerNS
                     wh.Dispose();
                 }
 
-                if (connected)
-                    this.QueueTask(false, new Action(() => ConnectState?.Invoke(this, true)));
+                if (Client.Connected)
+                    this.QueueTask("State", true, new Action(() => ConnectState?.Invoke(this, true)));
                 else
-                    this.QueueTask(false, new Action(() => ConnectState?.Invoke(this, false)));
+                    this.QueueTask("State", true, new Action(() => ConnectState?.Invoke(this, false)));
 
-                return connected;
+                return Client.Connected;
             }
         }
         public void Close()
@@ -204,9 +193,12 @@ namespace SocketManagerNS
                 StopListen();
 
                 Client?.Close();
+                Client = null;
+
+                TheClientStream = null;
             }
 
-            this.QueueTask(false, new Action(() => ConnectState?.Invoke(this, false)));
+            this.QueueTask("State", true, new Action(() => ConnectState?.Invoke(this, false)));
         }
 
         public bool Listen()
@@ -462,8 +454,7 @@ namespace SocketManagerNS
                     ListenState = null;
                     Error = null;
                     // TODO: dispose managed state (managed objects).
-                    Client?.Dispose();
-                    Client = null;
+                    Close();
                 }
 
                 // TODO: free unmanaged resources (unmanaged objects) and override a finalizer below.
@@ -482,7 +473,7 @@ namespace SocketManagerNS
         // This code added to correctly implement the disposable pattern.
         public void Dispose()
         {
-            Close();
+
             // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
             Dispose(true);
             // TODO: uncomment the following line if the finalizer is overridden above.

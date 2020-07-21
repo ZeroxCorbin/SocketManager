@@ -105,12 +105,12 @@ namespace SocketManagerNS
                 }
             }
 
-            Action completionTask = () =>
+            void completionTask()
             {
                 task();
 
                 OnTaskCompleted(group, queue);
-            };
+            }
 
             queue.QueueTask(isParallel, completionTask);
         }
