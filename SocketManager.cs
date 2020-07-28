@@ -354,6 +354,8 @@ namespace SocketManagerNS
         //Private
         private bool DetectConnection()
         {
+            if (Client == null) return false;
+
             // Detect if client disconnected
             if (Client.Client.Poll(0, SelectMode.SelectRead))
             {
