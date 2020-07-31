@@ -287,6 +287,7 @@ namespace SocketManagerNS
 
                         if (sw.ElapsedMilliseconds >= timeout)
                             break;
+                        Thread.Sleep(1);
                     }
                     sw.Stop();
                 }
@@ -391,6 +392,8 @@ namespace SocketManagerNS
 
                         if (!DetectConnection())
                             throw new Exception("Client disconnect detected internally.");
+
+                        Thread.Sleep(1);
                     }
                 }
                 catch (Exception ex)
