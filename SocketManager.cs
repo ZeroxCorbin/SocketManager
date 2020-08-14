@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Net;
@@ -69,15 +70,15 @@ namespace SocketManagerNS
         }
 
         //Public Read-only
-        public bool IsConnected 
+        public bool IsConnected
         {
             get
-            { 
+            {
                 if (Client != null)
-                    return Client.Connected; 
-                else 
+                    return Client.Connected;
+                else
                     return false;
-            } 
+            }
         }
         public bool IsListening { get; private set; }
         public bool IsReceivingAsync { get; private set; } = false;
@@ -297,10 +298,66 @@ namespace SocketManagerNS
                     return string.Empty;
                 }
 #if TRACE
-                if(sb.Length > 0)
-                    Console.WriteLine($"r: {sb.ToString().Trim('\r','\n')}");
+                if (sb.Length > 0)
+                    Console.WriteLine($"r: {sb.ToString().Trim('\r', '\n')}");
 #endif
                 return sb.ToString();
+            }
+        }
+
+        public byte[] ReadBytes(char untilChar = '\n', uint timeout = 1000)
+        {
+            lock (ClientStreamReadLockObject)
+            {
+                Stopwatch sw = new Stopwatch();
+                List<byte> sb = new List<byte>();
+
+                try
+                {
+                    if (ClientStream == null) return sb.ToArray();
+
+                    sw.Start();
+                    while (ClientStream.CanRead)
+                    {
+                        int b = -1;
+                        while (ClientStream.DataAvailable)
+                        {
+                            b = ClientStream.ReadByte();
+
+                            if (b > -1)
+                            {
+                                sb.Add((byte)b);
+                                sw.Restart();
+                            }
+                            else
+                                break;
+                        }
+
+                        if (untilChar != 0)
+                        {
+                            if ((char)b == untilChar)
+                                break;
+                        }
+                        else if (!ClientStream.DataAvailable)
+                            break;
+
+                        if (sw.ElapsedMilliseconds >= timeout)
+                            break;
+
+                        Thread.Sleep(1);
+                    }
+                    sw.Stop();
+                }
+                catch (Exception ex)
+                {
+                    InternalError(ClientStream, ex);
+                    return sb.ToArray();
+                }
+                //#if TRACE
+                //                if (sb.Count() > 0)
+                //                    Console.WriteLine($"r: {sb.ToString().Trim('\r', '\n')}");
+                //#endif
+                return sb.ToArray();
             }
         }
 
