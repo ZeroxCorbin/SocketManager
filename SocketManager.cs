@@ -228,7 +228,7 @@ namespace SocketManagerNS
             lock (ListenLockObject) { }
         }
 
-        public bool ReceiveAsync(string messageTerminator = "\n")
+        public bool ReceiveAsync(string messageTerminator = "\x81")
         {
             if (IsReceivingAsync) return true;
 
@@ -265,7 +265,7 @@ namespace SocketManagerNS
                     sw.Start();
                     while (ClientStream.CanRead)
                     {
-                        while (ClientStream.DataAvailable)
+                        if (ClientStream.DataAvailable)
                         {
                             int b = ClientStream.ReadByte();
 
@@ -274,8 +274,6 @@ namespace SocketManagerNS
                                 sb.Append((char)b);
                                 sw.Restart();
                             }
-                            else
-                                break;
                         }
 
                         if (!string.IsNullOrEmpty(untilString))
@@ -288,7 +286,9 @@ namespace SocketManagerNS
 
                         if (sw.ElapsedMilliseconds >= timeout)
                             break;
-                        Thread.Sleep(1);
+
+                        if (!ClientStream.DataAvailable)
+                            Thread.Sleep(1);
                     }
                     sw.Stop();
                 }
@@ -320,7 +320,7 @@ namespace SocketManagerNS
                     while (ClientStream.CanRead)
                     {
                         int b = -1;
-                        while (ClientStream.DataAvailable)
+                        if (ClientStream.DataAvailable)
                         {
                             b = ClientStream.ReadByte();
 
@@ -329,8 +329,6 @@ namespace SocketManagerNS
                                 sb.Add((byte)b);
                                 sw.Restart();
                             }
-                            else
-                                break;
                         }
 
                         if (untilChar != 0)
@@ -344,7 +342,8 @@ namespace SocketManagerNS
                         if (sw.ElapsedMilliseconds >= timeout)
                             break;
 
-                        Thread.Sleep(1);
+                        if (!ClientStream.DataAvailable)
+                            Thread.Sleep(1);
                     }
                     sw.Stop();
                 }
