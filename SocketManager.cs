@@ -274,21 +274,20 @@ namespace SocketManagerNS
                                 sb.Append((char)b);
                                 sw.Restart();
                             }
-                        }
 
-                        if (!string.IsNullOrEmpty(untilString))
-                        {
-                            if (sb.ToString().EndsWith(untilString))
-                                break;
+                            if (!string.IsNullOrEmpty(untilString))
+                            {
+                                if (sb.ToString().EndsWith(untilString))
+                                    break;
+                            }
                         }
-                        else if (!ClientStream.DataAvailable)
-                            break;
 
                         if (sw.ElapsedMilliseconds >= timeout)
                             break;
 
                         if (!ClientStream.DataAvailable)
                             Thread.Sleep(1);
+                        
                     }
                     sw.Stop();
                 }
@@ -328,16 +327,13 @@ namespace SocketManagerNS
                             {
                                 sb.Add((byte)b);
                                 sw.Restart();
+                            } 
+                            if (untilChar != 0)
+                            {
+                                if ((char)b == untilChar)
+                                    break;
                             }
                         }
-
-                        if (untilChar != 0)
-                        {
-                            if ((char)b == untilChar)
-                                break;
-                        }
-                        else if (!ClientStream.DataAvailable)
-                            break;
 
                         if (sw.ElapsedMilliseconds >= timeout)
                             break;
