@@ -228,7 +228,7 @@ namespace SocketManagerNS
             lock (ListenLockObject) { }
         }
 
-        public bool ReceiveAsync(string messageTerminator = "\n")
+        public bool StartReceiveAsync(string messageTerminator = "\n")
         {
             if (IsReceivingAsync) return true;
 
