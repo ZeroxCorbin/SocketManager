@@ -116,6 +116,7 @@ namespace SocketManagerNS
         private object ReceiveAsyncLockObject { get; set; } = new object();
 
         //Public
+        public SocketManager() { }
         public SocketManager(TcpClient client) => Client = client;
         public SocketManager(string connectionString)
         {
@@ -190,7 +191,7 @@ namespace SocketManagerNS
         {
             lock (ClientLockObject)
             {
-                StopReceiveAsync();
+                StopReceiveAsync(true);
                 StopListen();
 
                 Client?.Close();
@@ -240,7 +241,9 @@ namespace SocketManagerNS
         }
         public void StopReceiveAsync(bool force = false)
         {
-            if (!force) if (this.DataReceived != null) return;
+            if (!force)
+                if (this.DataReceived != null)
+                    return;
 
             IsReceivingAsync = false;
             lock (ReceiveAsyncLockObject) { }
