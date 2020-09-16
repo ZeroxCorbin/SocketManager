@@ -198,6 +198,8 @@ namespace SocketManagerNS
                 Client = null;
 
                 TheClientStream = null;
+
+                DataReceived  = null;
             }
 
             this.QueueTask("State", true, new Action(() => ConnectState?.Invoke(this, false)));
