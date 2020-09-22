@@ -5,7 +5,9 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace SocketManagerNS
 {
@@ -45,6 +47,9 @@ namespace SocketManagerNS
 
         public delegate void DataReceivedEventHandler(object sender, string data);
         public event DataReceivedEventHandler DataReceived;
+
+        public delegate void MessageReceivedEventHandler(object sender, string message, string pattern);
+        public event MessageReceivedEventHandler MessageReceived;
 
         //Public
         public string ConnectionString { get; set; }
@@ -106,6 +111,19 @@ namespace SocketManagerNS
                 else
                     return TheClientStream;
             }
+        }
+
+        public void Flush()
+        {
+            lock (ClientStreamReadLockObject)
+            {
+                while (TheClientStream.DataAvailable)
+                {
+                    byte[] drop = new byte[4098];
+                    TheClientStream.Read(drop, 0, 4098);
+                }
+            }
+
         }
         private object ClientStreamReadLockObject { get; set; } = new object();
         private object ClientStreamWriteLockObject { get; set; } = new object();
@@ -199,7 +217,7 @@ namespace SocketManagerNS
 
                 TheClientStream = null;
 
-                DataReceived  = null;
+                DataReceived = null;
             }
 
             this.QueueTask("State", true, new Action(() => ConnectState?.Invoke(this, false)));
@@ -231,7 +249,7 @@ namespace SocketManagerNS
             lock (ListenLockObject) { }
         }
 
-        public bool StartReceiveAsync(string messageTerminator = "\n")
+        public bool StartReceiveAsync(char messageTerminator = '\n')
         {
             if (IsReceivingAsync) return true;
 
@@ -250,12 +268,274 @@ namespace SocketManagerNS
             IsReceivingAsync = false;
             lock (ReceiveAsyncLockObject) { }
         }
+        private void ReceiveAsyncThread_DoWork(object sender)
+        {
+            lock (ReceiveAsyncLockObject)
+            {
+                IsReceivingAsync = true;
+                this.QueueTask(false, new Action(() => ReceiveAsyncState?.Invoke(this, true)));
+
+                try
+                {
+                    char c = (char)sender;
+                    string msg;
+                    while (IsReceivingAsync)
+                    {
+                        msg = Read(c);
+                        if (msg.Length > 0)
+                        {
+                            this.QueueTask(true, new Action(() => DataReceived?.Invoke(this, msg)));
+                        }
+                        else
+                        {
+                            if (!DetectConnection())
+                                throw new Exception("Client disconnect detected internally.");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    InternalError(this, ex);
+                }
+
+                IsReceivingAsync = false;
+                this.QueueTask(false, new Action(() => ReceiveAsyncState?.Invoke(this, false)));
+            }
+        }
+
+        /// <summary>
+        /// Receive data until the last charater matches the messageTerminator.
+        /// </summary>
+        /// <param name="messageTerminator"></param>
+        /// <returns>True if the thread started.</returns>
+        public bool StartReceiveMessages(char messageTerminator = '\n')
+        {
+            if (IsReceivingAsync)
+                return true;
+
+            if (ClientStream == null)
+                return false;
+
+            ThreadPool.QueueUserWorkItem(new WaitCallback(ReceiveMessages_Terminator_Thread_DoWork), messageTerminator);
+
+            return true;
+        }
+        private void ReceiveMessages_Terminator_Thread_DoWork(object state)
+        {
+            lock (ReceiveAsyncLockObject)
+            {
+                IsReceivingAsync = true;
+                this.QueueTask(false, new Action(() => ReceiveAsyncState?.Invoke(this, true)));
+
+                try
+                {
+                    char c = (char)state;
+
+                    string msg;
+                    while (IsReceivingAsync)
+                    {
+                        msg = Read(c);
+                        if (msg.Length > 0)
+                            this.QueueTask(true, new Action(() => DataReceived?.Invoke(this, msg)));
+                        else
+                            if (!DetectConnection())
+                                throw new Exception("Client disconnect detected internally.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    InternalError(this, ex);
+                }
+
+                IsReceivingAsync = false;
+                this.QueueTask(false, new Action(() => ReceiveAsyncState?.Invoke(this, false)));
+            }
+        }
+
+        /// <summary>
+        /// Receive messages with a start and end pattern.
+        /// All values between the start and end patterns will be included I.e. (?s)(.*?)
+        /// All values outside the pattern will be discared.
+        /// Avoid using start and end of string patterns.
+        /// </summary>
+        /// <param name="startRegexPattern">Example: To find "$" use "[$]"</param>
+        /// <param name="endRegexPattern">Example: To find "*0F" use "[*][A-Z0-9][A-Z0-9]"</param>
+        /// <returns>True if the thread started.</returns>
+        public bool StartReceiveMessages(string startRegexPattern, string endRegexPattern)
+        {
+            if (IsReceivingAsync)
+                return true;
+
+            if (ClientStream == null)
+                return false;
+
+            ThreadPool.QueueUserWorkItem(new WaitCallback(ReceiveMessages_Regex_Thread_DoWork), new string[] { startRegexPattern, endRegexPattern });
+
+            return true;
+        }
+        private void ReceiveMessages_Regex_Thread_DoWork(object state)
+        {
+            lock (ReceiveAsyncLockObject)
+            {
+                IsReceivingAsync = true;
+                this.QueueTask(false, new Action(() => ReceiveAsyncState?.Invoke(this, true)));
+
+                Stopwatch sw = new Stopwatch();
+                sw.Start();
+                try
+                {
+                    Regex reg = new Regex($"{((string[])state)[0]}(?s)(.*?){((string[])state)[1]}");
+
+                    string msg = string.Empty;
+                    while (IsReceivingAsync)
+                    {
+                        if ((msg += Read()).Length > 0)
+                        {
+                            foreach(Match match in reg.Matches(msg))
+                            {
+                                this.QueueTask(true, new Action(() => MessageReceived?.Invoke(this, match.Value, reg.ToString())));
+                                msg = string.Empty;
+                                sw.Restart();
+                            }
+                        }
+                        else
+                        {
+                            if (!DetectConnection())
+                                throw new Exception("Client disconnect detected internally.");
+                        }
+
+                        if (sw.ElapsedMilliseconds > 1000)
+                        {
+                            msg = string.Empty;
+                            sw.Restart();
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    InternalError(this, ex);
+                }
+
+                IsReceivingAsync = false;
+                this.QueueTask(false, new Action(() => ReceiveAsyncState?.Invoke(this, false)));
+            }
+        }
+
+        /// <summary>
+        /// Read data from the client stream.
+        /// </summary>
+        /// <param name="bufferSize">More than the size of the expected data. (bytes)</param>
+        /// <returns>Data from the client stream or string.Empty on error.</returns>
+        public string Read(int bufferSize = 1000000)
+        {
+            lock (ClientStreamReadLockObject)
+            {
+                if (ClientStream == null) return string.Empty;
+
+                if (ClientStream.CanRead)
+                    if (ClientStream.DataAvailable)
+                    {
+                        byte[] buf = new byte[bufferSize];
+                        int len = ClientStream.Read(buf, 0, bufferSize);
+                        if (len > 0)
+                             return Encoding.UTF8.GetString(buf, 0, len);
+                    }
+
+                return string.Empty;
+            }
+        }
+        /// <summary>
+        /// Read data from the client stream until the last charater matches the messageTerminator.
+        /// If the messageTerminator is not found a timeout will occur.
+        /// </summary>
+        /// <param name="messageTerminator"></param>
+        /// <param name="bufferSize">More than the size of the expected data. (bytes)</param>
+        /// <param name="timeout">How long to wait for the messageTerminator. (ms)</param>
+        /// <returns>Data from the client stream or string.Empty on error. Returns what data could be read on a timeout.</returns>
+        public string Read(char messageTerminator, int bufferSize = 1000000, uint timeout = 1000)
+        { 
+            if (ClientStream == null)
+                    return string.Empty;
+
+            lock (ClientStreamReadLockObject)
+            {
+                Stopwatch sw = new Stopwatch();
+                StringBuilder sb = new StringBuilder();
+
+                sw.Restart();
+                while (ClientStream.CanRead)
+                {
+                    if (ClientStream.DataAvailable)
+                    {
+                        byte[] buf = new byte[bufferSize];
+                        int len = ClientStream.Read(buf, 0, bufferSize);
+                        if (len > 0)
+                        {
+                            sb.Append(Encoding.UTF8.GetString(buf, 0, len).ToCharArray());
+                            if (buf[len - 1] == messageTerminator)
+                                break;
+                            sw.Restart();
+                        }
+                    }
+                    if (sw.ElapsedMilliseconds >= timeout)
+                        return sb.ToString();
+
+                    if (!ClientStream.DataAvailable)
+                        Thread.Sleep(1);
+                }
+
+                return sb.ToString();
+            }
+        }
 
         //Read Strings
-        public string Read(char untilChar, uint timeout = 1000) => Read(untilChar.ToString(), timeout);
-        public string Read(string untilString = "\n", uint timeout = 2000)
+        //public string Read(char untilChar = '\n', uint timeout = 1000)
+        //{
+        //    lock (ClientStreamReadLockObject)
+        //    {
+        //        Stopwatch sw = new Stopwatch();
+        //        StringBuilder sb = new StringBuilder(10000);
+
+        //        try
+        //        {
+        //            if (ClientStream == null) return string.Empty;
+        //            sw.Start();
+        //            int b;
+        //            while (ClientStream.CanRead)
+        //            {
+        //                while (ClientStream.DataAvailable)
+        //                {
+        //                    b = ClientStream.ReadByte();
+
+        //                    if (b > -1)
+        //                    {
+        //                        sb.Append((char)b);
+        //                        sw.Restart();
+
+        //                        if (b == untilChar)
+        //                            return sb.ToString();
+        //                    }
+        //                    if (sw.ElapsedMilliseconds >= timeout)
+        //                        return sb.ToString();
+        //                }
+        //                Thread.Sleep(1);
+
+        //                if (ClientStream == null) return string.Empty;
+        //            }
+        //            sw.Stop();
+        //        }
+        //        catch (Exception ex)
+        //        {
+        //            InternalError(ClientStream, ex);
+        //            return string.Empty;
+        //        }
+
+        //        return sb.ToString();
+        //    }
+        //}
+        public string Read(string untilString, uint timeout = 2000)
         {
-            if (string.IsNullOrEmpty(untilString))
+            if (untilString == null)
                 untilString = string.Empty;
 
             lock (ClientStreamReadLockObject)
@@ -280,11 +560,8 @@ namespace SocketManagerNS
                                 sw.Restart();
                             }
 
-                            if (!string.IsNullOrEmpty(untilString))
-                            {
-                                if (sb.ToString().EndsWith(untilString))
-                                    break;
-                            }
+                            if (sb.ToString().EndsWith(untilString))
+                                break;
                         }
 
                         if (sw.ElapsedMilliseconds >= timeout)
@@ -292,7 +569,8 @@ namespace SocketManagerNS
 
                         if (!ClientStream.DataAvailable)
                             Thread.Sleep(1);
-                        
+
+                        if (ClientStream == null) return string.Empty;
                     }
                     sw.Stop();
                 }
@@ -301,15 +579,56 @@ namespace SocketManagerNS
                     InternalError(ClientStream, ex);
                     return string.Empty;
                 }
-#if TRACE
-                if (sb.Length > 0)
-                    Console.WriteLine($"r: {sb.ToString().Trim('\r', '\n')}");
-#endif
+
                 return sb.ToString();
             }
         }
 
-        public byte[] ReadBytes(char untilChar = '\n', uint timeout = 1000)
+        public byte[] ReadBytes(uint timeout = 1000)
+        {
+            lock (ClientStreamReadLockObject)
+            {
+                Stopwatch sw = new Stopwatch();
+                List<byte> sb = new List<byte>();
+
+                try
+                {
+                    if (ClientStream == null) return sb.ToArray();
+
+                    sw.Start();
+                    while (ClientStream.CanRead)
+                    {
+                        int b = -1;
+                        if (ClientStream.DataAvailable)
+                        {
+                            while (ClientStream.DataAvailable)
+                            {
+                                b = ClientStream.ReadByte();
+
+                                if (b > -1)
+                                     sb.Add((byte)b);
+                            }
+                            return sb.ToArray();
+                        }
+
+                        if (sw.ElapsedMilliseconds >= timeout)
+                            break;
+
+                        if (!ClientStream.DataAvailable)
+                            Thread.Sleep(1);
+                    }
+                    sw.Stop();
+                }
+                catch (Exception ex)
+                {
+                    InternalError(ClientStream, ex);
+                    return sb.ToArray();
+                }
+
+                return sb.ToArray();
+            }
+        }
+        public byte[] ReadBytes(char untilChar, uint timeout = 1000)
         {
             lock (ClientStreamReadLockObject)
             {
@@ -332,7 +651,7 @@ namespace SocketManagerNS
                             {
                                 sb.Add((byte)b);
                                 sw.Restart();
-                            } 
+                            }
                             if (untilChar != 0)
                             {
                                 if ((char)b == untilChar)
@@ -353,10 +672,7 @@ namespace SocketManagerNS
                     InternalError(ClientStream, ex);
                     return sb.ToArray();
                 }
-                //#if TRACE
-                //                if (sb.Count() > 0)
-                //                    Console.WriteLine($"r: {sb.ToString().Trim('\r', '\n')}");
-                //#endif
+
                 return sb.ToArray();
             }
         }
@@ -366,9 +682,6 @@ namespace SocketManagerNS
         {
             lock (ClientStreamWriteLockObject)
             {
-#if TRACE
-                Console.WriteLine($"w: {msg.Trim('\r', '\n')}");
-#endif
                 try
                 {
                     if (ClientStream == null) return false;
@@ -431,37 +744,7 @@ namespace SocketManagerNS
             return true;
         }
 
-        private void ReceiveAsyncThread_DoWork(object sender)
-        {
-            lock (ReceiveAsyncLockObject)
-            {
-                IsReceivingAsync = true;
-                this.QueueTask(false, new Action(() => ReceiveAsyncState?.Invoke(this, true)));
 
-                try
-                {
-                    string msg;
-                    while (IsReceivingAsync)
-                    {
-                        msg = Read((string)sender);
-                        if (msg.Length > 0)
-                            DataReceived?.Invoke(this, msg);
-
-                        if (!DetectConnection())
-                            throw new Exception("Client disconnect detected internally.");
-
-                        Thread.Sleep(1);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    InternalError(this, ex);
-                }
-
-                IsReceivingAsync = false;
-                this.QueueTask(false, new Action(() => ReceiveAsyncState?.Invoke(this, false)));
-            }
-        }
         private void ListenThread_DoWork(object sender)
         {
             lock (ListenLockObject)

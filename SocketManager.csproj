@@ -4,11 +4,20 @@
     <TargetFrameworks>netstandard2.1;net472</TargetFrameworks>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Debug|netstandard2.1|AnyCPU'">
+    <DefineConstants>DEBUG</DefineConstants>
+  </PropertyGroup>
+
   <ItemGroup>
     <None Remove=".gitattributes" />
     <None Remove=".gitignore" />
-    <None Remove="LICENSE" />
     <None Remove="README.md" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="LICENSE">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>
