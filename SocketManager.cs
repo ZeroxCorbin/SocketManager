@@ -273,7 +273,7 @@ namespace SocketManagerNS
             lock (ReceiveAsyncLockObject)
             {
                 IsReceivingAsync = true;
-                this.QueueTask(false, new Action(() => ReceiveAsyncState?.Invoke(this, true)));
+                this.QueueTask(true, new Action(() => ReceiveAsyncState?.Invoke(this, true)));
 
                 try
                 {
@@ -284,7 +284,10 @@ namespace SocketManagerNS
                         msg = Read(c);
                         if (msg.Length > 0)
                         {
-                            this.QueueTask(true, new Action(() => DataReceived?.Invoke(this, msg)));
+                            this.QueueTask(false, new Action(() => DataReceived?.Invoke(this, msg)));
+#if TRACE
+                            Console.Write(msg);
+#endif
                         }
                         else
                         {
@@ -299,7 +302,7 @@ namespace SocketManagerNS
                 }
 
                 IsReceivingAsync = false;
-                this.QueueTask(false, new Action(() => ReceiveAsyncState?.Invoke(this, false)));
+                this.QueueTask(true, new Action(() => ReceiveAsyncState?.Invoke(this, false)));
             }
         }
 
@@ -325,7 +328,7 @@ namespace SocketManagerNS
             lock (ReceiveAsyncLockObject)
             {
                 IsReceivingAsync = true;
-                this.QueueTask(false, new Action(() => ReceiveAsyncState?.Invoke(this, true)));
+                this.QueueTask(true, new Action(() => ReceiveAsyncState?.Invoke(this, true)));
 
                 try
                 {
@@ -336,7 +339,7 @@ namespace SocketManagerNS
                     {
                         msg = Read(c);
                         if (msg.Length > 0)
-                            this.QueueTask(true, new Action(() => DataReceived?.Invoke(this, msg)));
+                            this.QueueTask(false, new Action(() => DataReceived?.Invoke(this, msg)));
                         else
                             if (!DetectConnection())
                                 throw new Exception("Client disconnect detected internally.");
@@ -348,7 +351,7 @@ namespace SocketManagerNS
                 }
 
                 IsReceivingAsync = false;
-                this.QueueTask(false, new Action(() => ReceiveAsyncState?.Invoke(this, false)));
+                this.QueueTask(true, new Action(() => ReceiveAsyncState?.Invoke(this, false)));
             }
         }
 
@@ -378,7 +381,7 @@ namespace SocketManagerNS
             lock (ReceiveAsyncLockObject)
             {
                 IsReceivingAsync = true;
-                this.QueueTask(false, new Action(() => ReceiveAsyncState?.Invoke(this, true)));
+                this.QueueTask(true, new Action(() => ReceiveAsyncState?.Invoke(this, true)));
 
                 Stopwatch sw = new Stopwatch();
                 sw.Start();
@@ -393,7 +396,7 @@ namespace SocketManagerNS
                         {
                             foreach(Match match in reg.Matches(msg))
                             {
-                                this.QueueTask(true, new Action(() => MessageReceived?.Invoke(this, match.Value, reg.ToString())));
+                                this.QueueTask(false, new Action(() => MessageReceived?.Invoke(this, match.Value, reg.ToString())));
                                 msg = string.Empty;
                                 sw.Restart();
                             }
@@ -408,6 +411,8 @@ namespace SocketManagerNS
                         {
                             msg = string.Empty;
                             sw.Restart();
+
+                            Thread.Sleep(1);
                         }
                     }
                 }
@@ -417,7 +422,7 @@ namespace SocketManagerNS
                 }
 
                 IsReceivingAsync = false;
-                this.QueueTask(false, new Action(() => ReceiveAsyncState?.Invoke(this, false)));
+                this.QueueTask(true, new Action(() => ReceiveAsyncState?.Invoke(this, false)));
             }
         }
 
@@ -438,7 +443,14 @@ namespace SocketManagerNS
                         byte[] buf = new byte[bufferSize];
                         int len = ClientStream.Read(buf, 0, bufferSize);
                         if (len > 0)
-                             return Encoding.UTF8.GetString(buf, 0, len);
+                        {
+                            string msg = Encoding.UTF8.GetString(buf, 0, len);
+#if TRACE
+                            Console.Write(msg);
+#endif
+                            return msg;
+                        }
+                             
                     }
 
                 return string.Empty;
@@ -468,7 +480,9 @@ namespace SocketManagerNS
                     if (ClientStream.DataAvailable)
                     {
                         byte[] buf = new byte[bufferSize];
+
                         int len = ClientStream.Read(buf, 0, bufferSize);
+
                         if (len > 0)
                         {
                             sb.Append(Encoding.UTF8.GetString(buf, 0, len).ToCharArray());
@@ -483,7 +497,9 @@ namespace SocketManagerNS
                     if (!ClientStream.DataAvailable)
                         Thread.Sleep(1);
                 }
-
+#if TRACE
+                Console.Write(sb.ToString());
+#endif
                 return sb.ToString();
             }
         }
@@ -580,6 +596,9 @@ namespace SocketManagerNS
                     return string.Empty;
                 }
 
+#if TRACE
+                Console.Write(sb.ToString());
+#endif
                 return sb.ToString();
             }
         }
@@ -688,7 +707,9 @@ namespace SocketManagerNS
                     if (!ClientStream.CanWrite) return false;
 
                     byte[] buffer_ot = System.Text.ASCIIEncoding.ASCII.GetBytes(msg);
-
+#if TRACE
+                    Console.Write(msg);
+#endif
                     //StringToBytes(msg, ref buffer_ot);
                     ClientStream.Write(buffer_ot, 0, buffer_ot.Length);
                 }
@@ -752,7 +773,7 @@ namespace SocketManagerNS
                 try
                 {
                     IsListening = true;
-                    this.QueueTask(false, new Action(() => ListenState?.Invoke(this, true)));
+                    this.QueueTask(true, new Action(() => ListenState?.Invoke(this, true)));
 
                     while (IsListening)
                     {
@@ -767,7 +788,7 @@ namespace SocketManagerNS
                     Server.Stop();
                     Server = null;
 
-                    this.QueueTask(false, new Action(() => ListenState?.Invoke(this, false)));
+                    this.QueueTask(true, new Action(() => ListenState?.Invoke(this, false)));
                 }
                 catch (Exception ex)
                 {
@@ -778,7 +799,7 @@ namespace SocketManagerNS
 
                     InternalError(Server, ex);
 
-                    this.QueueTask(false, new Action(() => ListenState?.Invoke(this, false)));
+                    this.QueueTask(true, new Action(() => ListenState?.Invoke(this, false)));
                 }
             }
         }
