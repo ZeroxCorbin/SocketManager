@@ -216,8 +216,6 @@ namespace SocketManagerNS
                 Client = null;
 
                 TheClientStream = null;
-
-                DataReceived = null;
             }
 
             this.QueueTask("State", true, new Action(() => ConnectState?.Invoke(this, false)));
@@ -251,9 +249,11 @@ namespace SocketManagerNS
 
         public bool StartReceiveAsync(char messageTerminator = '\n')
         {
-            if (IsReceivingAsync) return true;
+            if (IsReceivingAsync)
+                return true;
 
-            if (ClientStream == null) return false;
+            if (ClientStream == null)
+                return false;
 
             ThreadPool.QueueUserWorkItem(new WaitCallback(ReceiveAsyncThread_DoWork), messageTerminator);
 
@@ -261,9 +261,9 @@ namespace SocketManagerNS
         }
         public void StopReceiveAsync(bool force = false)
         {
-            if (!force)
-                if (this.DataReceived != null)
-                    return;
+            //if (!force)
+            //    if (this.DataReceived != null)
+            //        return;
 
             IsReceivingAsync = false;
             lock (ReceiveAsyncLockObject) { }
@@ -306,54 +306,54 @@ namespace SocketManagerNS
             }
         }
 
-        /// <summary>
-        /// Receive data until the last charater matches the messageTerminator.
-        /// </summary>
-        /// <param name="messageTerminator"></param>
-        /// <returns>True if the thread started.</returns>
-        public bool StartReceiveMessages(char messageTerminator = '\n')
-        {
-            if (IsReceivingAsync)
-                return true;
+        ///// <summary>
+        ///// Receive data until the last charater matches the messageTerminator.
+        ///// </summary>
+        ///// <param name="messageTerminator"></param>
+        ///// <returns>True if the thread started.</returns>
+        //public bool StartReceiveMessages(char messageTerminator = '\n')
+        //{
+        //    if (IsReceivingAsync)
+        //        return true;
 
-            if (ClientStream == null)
-                return false;
+        //    if (ClientStream == null)
+        //        return false;
 
-            ThreadPool.QueueUserWorkItem(new WaitCallback(ReceiveMessages_Terminator_Thread_DoWork), messageTerminator);
+        //    ThreadPool.QueueUserWorkItem(new WaitCallback(ReceiveMessages_Terminator_Thread_DoWork), messageTerminator);
 
-            return true;
-        }
-        private void ReceiveMessages_Terminator_Thread_DoWork(object state)
-        {
-            lock (ReceiveAsyncLockObject)
-            {
-                IsReceivingAsync = true;
-                this.QueueTask(true, new Action(() => ReceiveAsyncState?.Invoke(this, true)));
+        //    return true;
+        //}
+        //private void ReceiveMessages_Terminator_Thread_DoWork(object state)
+        //{
+        //    lock (ReceiveAsyncLockObject)
+        //    {
+        //        IsReceivingAsync = true;
+        //        this.QueueTask(true, new Action(() => ReceiveAsyncState?.Invoke(this, true)));
 
-                try
-                {
-                    char c = (char)state;
+        //        try
+        //        {
+        //            char c = (char)state;
 
-                    string msg;
-                    while (IsReceivingAsync)
-                    {
-                        msg = Read(c);
-                        if (msg.Length > 0)
-                            this.QueueTask(false, new Action(() => DataReceived?.Invoke(this, msg)));
-                        else
-                            if (!DetectConnection())
-                                throw new Exception("Client disconnect detected internally.");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    InternalError(this, ex);
-                }
+        //            string msg;
+        //            while (IsReceivingAsync)
+        //            {
+        //                msg = Read(c);
+        //                if (msg.Length > 0)
+        //                    this.QueueTask(false, new Action(() => DataReceived?.Invoke(this, msg)));
+        //                else
+        //                    if (!DetectConnection())
+        //                        throw new Exception("Client disconnect detected internally.");
+        //            }
+        //        }
+        //        catch (Exception ex)
+        //        {
+        //            InternalError(this, ex);
+        //        }
 
-                IsReceivingAsync = false;
-                this.QueueTask(true, new Action(() => ReceiveAsyncState?.Invoke(this, false)));
-            }
-        }
+        //        IsReceivingAsync = false;
+        //        this.QueueTask(true, new Action(() => ReceiveAsyncState?.Invoke(this, false)));
+        //    }
+        //}
 
         /// <summary>
         /// Receive messages with a start and end pattern.
@@ -703,14 +703,15 @@ namespace SocketManagerNS
             {
                 try
                 {
-                    if (ClientStream == null) return false;
-                    if (!ClientStream.CanWrite) return false;
+                    if (ClientStream == null)
+                        return false;
+                    if (!ClientStream.CanWrite)
+                        return false;
 
-                    byte[] buffer_ot = System.Text.ASCIIEncoding.ASCII.GetBytes(msg);
+                    byte[] buffer_ot = ASCIIEncoding.ASCII.GetBytes(msg);
 #if TRACE
                     Console.Write(msg);
 #endif
-                    //StringToBytes(msg, ref buffer_ot);
                     ClientStream.Write(buffer_ot, 0, buffer_ot.Length);
                 }
                 catch (Exception ex)
