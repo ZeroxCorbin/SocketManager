@@ -184,7 +184,7 @@ namespace SocketManagerNS
             Exception = data;
 
             this.QueueTask(false, new Action(() => Error?.Invoke(this, data)));
-            this.QueueTask(false, new Action(() => ConnectState?.Invoke(this, false)));
+            this.QueueTask("State", true, new Action(() => ConnectState?.Invoke(this, false)));
         }
 
         public bool Connect(int timeout = 3000)
@@ -227,16 +227,19 @@ namespace SocketManagerNS
         {
             lock (ClientLockObject)
             {
-                StopReceiveAsync(true);
-                StopListen();
+                lock (ClientStreamReadLockObject)
+                {
+                    StopReceiveAsync(true);
+                    StopListen();
 
-                Client?.Close();
-                Client = null;
+                    Client?.Close();
 
-                TheClientStream = null;
+                    this.QueueTask("State", true, new Action(() => ConnectState?.Invoke(this, false)));
+
+                    Client = null;
+                    TheClientStream = null;
+                }
             }
-
-            this.QueueTask("State", true, new Action(() => ConnectState?.Invoke(this, false)));
         }
 
         public bool Listen()
@@ -463,9 +466,9 @@ namespace SocketManagerNS
                         if (len > 0)
                         {
                             string msg = Encoding.UTF8.GetString(buf, 0, len);
-#if TRACE
-                            Console.Write(msg);
-#endif
+//#if TRACE
+//                            Console.Write(msg);
+//#endif
                             return msg;
                         }
                              
@@ -626,30 +629,29 @@ namespace SocketManagerNS
             lock (ClientStreamReadLockObject)
             {
                 Stopwatch sw = new Stopwatch();
-                List<byte> sb = new List<byte>();
 
                 try
                 {
-                    if (ClientStream == null) return sb.ToArray();
+                    if (ClientStream == null) return new byte[0];
 
                     sw.Start();
                     while (ClientStream.CanRead)
                     {
-                        int b = -1;
                         if (ClientStream.DataAvailable)
                         {
-                            while (ClientStream.DataAvailable)
+                            byte[] buf = new byte[1000];
+
+                            int len = ClientStream.Read(buf, 0, 1000);
+
+                            if (len > 0)
                             {
-                                b = ClientStream.ReadByte();
-
-                                if (b > -1)
-                                     sb.Add((byte)b);
+                                byte[] ret = new byte[len];
+                                Array.Copy(buf, ret, len);
+                                return ret;
                             }
-                            return sb.ToArray();
                         }
-
                         if (sw.ElapsedMilliseconds >= timeout)
-                            break;
+                            return new byte[0];
 
                         if (!ClientStream.DataAvailable)
                             Thread.Sleep(1);
@@ -659,10 +661,10 @@ namespace SocketManagerNS
                 catch (Exception ex)
                 {
                     InternalError(ClientStream, ex);
-                    return sb.ToArray();
+                    return new byte[0];
                 }
 
-                return sb.ToArray();
+                return new byte[0];
             }
         }
         public byte[] ReadBytes(char untilChar, uint timeout = 1000)
