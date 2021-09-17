@@ -227,9 +227,12 @@ namespace SocketManagerNS
         {
             lock (ClientLockObject)
             {
+
+                StopReceiveAsync(true);
+
                 lock (ClientStreamReadLockObject)
                 {
-                    StopReceiveAsync(true);
+                    
                     StopListen();
 
                     Client?.Close();
